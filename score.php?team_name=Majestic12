@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>King of the Hill</title>
+</head>
+<body>
+<style>
+body {background-color: #F6F4F3;}
+</style>
+<center>
+The following team has scored:
+<h1 style="font-family:Courier New;">
+Majestic12</h1>
+<br>
+Locking Access Point for 60 seconds
+</center>
+</body>
+</html>
