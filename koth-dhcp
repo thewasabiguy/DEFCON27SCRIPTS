@@ -1,0 +1,1 @@
+while true; do iw dev wlan0 connect WCTF_KingOfTheHill && dhclient wlan0; curl "http://172.16.10.1/cgi-bin/score.php?team_name=blah";iw dev wlan0 disconnect;done

@@ -1,0 +1,111 @@
+#!/bin/bash
+# --------------------------------------------------------------------------
+# This script installs files and services specific to this project.
+#
+# Author: Bernhard Bablok
+# License: GPL3
+#
+# Website: https://github.com/bablokb/pi-btnap
+#
+# --------------------------------------------------------------------------
+
+# --- defaults used during installation   ----------------------------------
+
+MODE="${1:-server}"     # "server" or "client" (default is "server")
+ADD_IF="$2"             # interface to add to the bridge, e.g. eth0
+
+BR_DEV="br0"               # bridge device
+BR_IP="192.168.20.99/24"   # IP of bridge-device
+BR_GW="192.168.20.1"       # Gateway for bridge-device
+BR_RANGE="192.168.20.100,192.168.20.150,12h"  # DHCP-range for dnsmasq
+BR_DOMAIN="example.com"
+
+BT_CONF_DNSMASQ="1"       # install dnsmasq (supported values: 0|1)
+BT_CONF_HIDDEN="0"        # system is permanently discoverable/pairable
+                          # supported values: 0|1
+
+# --- basic packages   ------------------------------------------------------
+
+PACKAGES="bridge-utils python-dbus python-gobject"
+[ "$BT_CONF_DNSMASQ" = "1" ] && PACKAGES+=" dnsmasq"
+if [ -n "$PACKAGES" ]; then
+  apt-get update
+  apt-get -y install $PACKAGES
+fi
+
+# --- install specific files   ----------------------------------------------
+
+for f in `find $(dirname "$0")/../files/ -type f`; do
+  cp "$f" "${f#*files}"
+done
+chmod 755 /usr/local/sbin/btnap.service.sh
+chmod 755 /usr/local/sbin/btnap.service.py
+chmod 644 /etc/systemd/system/btnap.service
+chown root:root /etc/systemd/system/btnap.service \
+                                    /usr/local/sbin/btnap.service.*
+
+# --- create /etc/btnap.conf   ----------------------------------------------
+
+cat > /etc/btnap.conf <<EOF
+# --------------------------------------------------------------------------
+# Configuration-file for btnap.service
+#
+# Author: Bernhard Bablok
+# License: GPL3
+#
+# Website: https://github.com/bablokb/pi-btnap
+#
+# --------------------------------------------------------------------------
+
+MODE="$MODE"            # values: server|client
+
+# server configuration
+# IP addresses must correspond with dnsmasq or with your home-network
+BR_DEV="$BR_DEV"    # bridge-device
+BR_IP="$BR_IP"      # IP of bridge
+BR_GW="$BR_GW"      # GW-IP for bridge
+ADD_IF="$ADD_IF"          # interface to add to the bridge, e.g. eth0
+
+# client configuration
+REMOTE_DEV=""           # MAC of remote BT nap server
+
+DEBUG=""                # set to anything to enable debug-messages
+EOF
+
+chmod 644 /etc/btnap.conf
+
+# --- configure bluetooth   -------------------------------------------------
+
+if [ "$MODE" = "server" ]; then
+  if [ $BT_CONF_HIDDEN -eq 0 ]; then
+    sed -i -e "/DiscoverableTimeout/s/^.*$/DiscoverableTimeout = 0/" \
+         -e "/PairableTimeout/s/^.*$/PairableTimeout = 0/" \
+                                                    /etc/bluetooth/main.conf
+  else
+    sed -i -e "/DiscoverableTimeout/s/^.*$/#DiscoverableTimeout = 0/" \
+         -e "/PairableTimeout/s/^.*$/#PairableTimeout = 0/" \
+                                                    /etc/bluetooth/main.conf
+  fi
+fi
+
+# --- configure dnsmasq   ---------------------------------------------------
+
+if [ "$BT_CONF_DNSMASQ" = "1" ]; then
+  [ -f /etc/dnsmasq.conf ] &&  cp -a /etc/dnsmasq.conf \
+                       /etc/dnsmasq.conf.$(date -r /etc/dnsmasq.conf '+%Y%m%d')
+  cat > /etc/dnsmasq.conf <<EOF
+interface=$BR_DEV
+expand-hosts
+domain=$BR_DOMAIN
+dhcp-range=$BR_RANGE
+EOF
+fi
+
+# --- activate service   ----------------------------------------------------
+
+systemctl enable btnap.service
+[ "$BT_CONF_DNSMASQ" = "1" ] && systemctl restart dnsmasq.service
+
+# --- final configuration is manual   ---------------------------------------
+
+echo "please edit /etc/btnap.conf and start btnap.service afterwards"
